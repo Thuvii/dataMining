@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Which Early-Game Features Most Predict Winning? — LoL (Diamond, 10-min)</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --card: #111827;
+    --ink: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #60a5fa;
+    --ok: #34d399;
+    --warn: #f59e0b;
+    --bad: #f87171;
+    --code: #0f172a;
+  }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji'; }
+  .wrap { max-width: 980px; margin: 48px auto; padding: 0 20px; }
+  h1, h2, h3 { line-height:1.2; margin: 0.9em 0 0.4em; }
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.35rem; color: var(--accent); }
+  h3 { font-size: 1.05rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: 0.6em 0; }
+  .card { background: var(--card); border: 1px solid #1f2937; border-radius: 16px; padding: 18px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); margin: 16px 0; }
+  .grid { display: grid; gap: 14px; }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .muted { color: var(--muted); }
+  .badge { display:inline-block; padding: 3px 7px; border-radius: 999px; font-size: 12px; border:1px solid #2b3441; background:#0c1220; color:#cbd5e1; }
+  .kpi { font-weight:700; font-size: 1.25rem; }
+  code, pre { background: var(--code); color: #d1d5db; border: 1px solid #1f2937; border-radius: 10px; padding: 2px 6px; }
+  pre { padding: 14px; overflow:auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 8px; border-bottom: 1px solid #1f2937; text-align: left; }
+  th { color: #cbd5e1; font-weight: 600; }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  .pill { padding: 2px 8px; border-radius:10px; background:#0b1220; border:1px solid #20314b; color:#cde2ff; font-size:12px; }
+  .foot { margin-top: 28px; font-size: 13px; color: var(--muted); }
+  .callout { border-left: 4px solid var(--accent); padding-left: 12px; }
+  .small { font-size: 13px; }
+  .toc a { color: #bfdbfe; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="card">
+      <h1>Which Early-Game Features Most Predict Winning?<br><span class="muted">League of Legends — Diamond Ranked Games (10-min snapshot)</span></h1>
+      <p class="muted">A concise, end-to-end report covering problem framing, dataset, EDA, modeling (Logistic Regression & Random Forest), SHAP interpretability, results, and limitations.</p>
+      <div class="grid three">
+        <div><div class="muted small">Matches</div><div class="kpi">≈ 9.9k</div></div>
+        <div><div class="muted small">Target</div><div class="kpi">blueWins (0/1)</div></div>
+        <div><div class="muted small">Snapshot</div><div class="kpi">10-minute stats</div></div>
+      </div>
+    </header>
+
+    <section class="card toc">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#problem">Problem Statement</a></li>
+        <li><a href="#data">Dataset & Features</a></li>
+        <li><a href="#eda">Exploratory Analysis (EDA)</a></li>
+        <li><a href="#modeling">Modeling Approach</a></li>
+        <li><a href="#logit">Logistic Regression (scaled)</a></li>
+        <li><a href="#rf">Random Forest & SHAP</a></li>
+        <li><a href="#compare">Feature Importance — Comparison</a></li>
+        <li><a href="#results">Key Results & Takeaways</a></li>
+        <li><a href="#limits">Limitations & Next Steps</a></li>
+        <li><a href="#appendix">Appendix: How to Reproduce</a></li>
+      </ol>
+    </section>
+
+    <section id="problem" class="card">
+      <h2>1) Problem Statement</h2>
+      <p><strong>Goal:</strong> Identify which <em>early-game</em> (10-minute) features most strongly influence match outcome (<code>blueWins</code>) in high-ELO ranked games.</p>
+      <p class="callout small">Why it matters: actionable priorities for players/analysts (objective control, economy, vision) and interpretable benchmarks for esports analytics.</p>
+    </section>
+
+    <section id="data" class="card">
+      <h2>2) Dataset & Features</h2>
+      <p><strong>Source:</strong> Kaggle — League of Legends Diamond Ranked Games (10-min). Each row is one match snapshot at 10:00.</p>
+      <ul>
+        <li><strong>Target:</strong> <code>blueWins</code> (1=blue victory, 0=red victory). Optional mirror <code>redWins</code> is perfectly redundant (<code>redWins=1-blueWins</code>).</li>
+        <li><strong>Raw features:</strong> side-specific metrics (e.g., <code>blueGold</code>, <code>redGold</code>, <code>blueDragons</code>, <code>redDragons</code>, …).</li>
+        <li><strong>Engineered:</strong> symmetric <em>difference</em> features: <code>diffX = blueX − redX</code> (e.g., <code>diffTotalGold</code>, <code>diffDragons</code>, <code>diffWardsPlaced</code>, …).</li>
+      </ul>
+      <p class="small muted">Tip: difference features reduce redundancy and make signs intuitive (positive favors blue; negative favors red).</p>
+    </section>
+
+    <section id="eda" class="card">
+      <h2>3) Exploratory Analysis (EDA)</h2>
+      <div class="grid two">
+        <div>
+          <h3>Target balance</h3>
+          <p class="small">Check proportion of blue vs red wins; dataset is usually near-balanced.</p>
+          <ul class="small">
+            <li>Blue win rate: <span class="pill">≈ 50%</span></li>
+            <li>Games: <span class="pill">≈ 9,879</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Early signals</h3>
+          <p class="small">Compute simple correlations between <code>blueWins</code> and difference features for a first glance.</p>
+          <ul class="small">
+            <li><code>diffTotalGold</code>: typically strong positive</li>
+            <li><code>diffDragons</code>: strong positive</li>
+            <li><code>diffExperience</code>: positive</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+        <section id="modeling" class="card">
+      <h2>4) Modeling Approach</h2>
+      <div class="grid two">
+        <div>
+          <h3>Logistic Regression (scaled)</h3>
+          <p class="small">Linear and interpretable. Standardize numeric features so coefficients represent effects per 1 standard deviation. Convert coefficients via <code>exp(coef)</code> to get odds ratios.</p>
+          <ul class="small">
+            <li>Pros: easy to explain & test (p-values)</li>
+            <li>Cons: can't capture nonlinear thresholds or interactions</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Random Forest & SHAP</h3>
+          <p class="small">Tree ensemble for nonlinear effects. Use SHAP (Shapley values) to interpret how each feature pushes predictions up or down.</p>
+          <ul class="small">
+            <li>Pros: captures interactions & thresholds</li>
+            <li>Cons: raw importances need SHAP for directionality</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="logit" class="card">
+      <h2>5) Logistic Regression — How to Read the Results</h2>
+      <p class="small">Important steps and interpretation tips:</p>
+      <ol class="small">
+        <li>Standardize numeric features: <code>(x - mean)/SD</code>. Coefficients are per 1 SD.</li>
+        <li>Convert coefficient to odds ratio: <code>odds = exp(coef)</code>.</li>
+        <li>Percent change in odds: <code>(odds - 1) * 100%</code>.</li>
+        <li>Report practical unit conversions for raw features (e.g., per 1000 gold).</li>
+      </ol>
+
+      <h3>Example (from your model)</h3>
+      <p class="small">Given <code>diffDragons coef = 0.2403</code>:</p>
+      <ul class="small">
+        <li>Odds ratio = <code>exp(0.2403) ≈ 1.272</code></li>
+        <li>Interpretation: each extra dragon advantage at 10 minutes multiplies the odds of a Blue win by ≈ <strong>1.27</strong> (≈ <strong>+27% odds</strong>).</li>
+      </ul>
+      <pre><code># Example: convert coef to % change (Python)
+import numpy as np
+coef = 0.2403
+odds = np.exp(coef)
+pct = (odds - 1) * 100
+print(odds, pct)  # 1.272, 27.2%</code></pre>
+    </section>
+
+    <section id="rf" class="card">
+      <h2>6) Random Forest & SHAP — Practical Interpretation</h2>
+      <p class="small">Random Forest feature importance ranks predictive power but doesn't give effect direction. Use SHAP to see whether high values of a feature increase or decrease predicted win probability.</p>
+
+      <h3>SHAP Summary Plot</h3>
+      <p class="small">How to read it:</p>
+      <ul class="small">
+        <li>Features sorted by mean |SHAP| (importance).</li>
+        <li>Each dot is one match; color = feature value (red=high, blue=low).</li>
+        <li>Dots to the right increase predicted probability of Blue win; left decrease it.</li>
+      </ul>
+
+      <p class="small">(If you want, paste your SHAP summary image here: <strong>insert image tag</strong> or link.)</p>
+    </section>
+
+    <section id="compare" class="card">
+      <h2>7) Comparing Methods — Why they may disagree</h2>
+      <p class="small">Short summary:</p>
+      <ul class="small">
+        <li><strong>Logistic Regression</strong> finds linear, additive signals and reports statistical significance.</li>
+        <li><strong>Random Forest</strong> finds split-based importance (may favor features with many distinct values).</li>
+        <li><strong>SHAP</strong> reconciles magnitude + direction for the tree model; use it to explain RF output.</li>
+      </ul>
+
+      <p class="small">Recommendation: trust features that are consistently ranked high across multiple methods. For features ranked differently, inspect SHAP dependence plots to understand threshold effects.</p>
+    </section>
+
+    <section id="results" class="card">
+      <h2>8) Key Results & Practical Takeaways</h2>
+      <ol>
+        <li><strong>Top predictors:</strong> generally <code>diffTotalGold</code>, <code>diffDragons</code>, and <code>diffExperience</code>.</li>
+        <li><strong>Actions:</strong> prioritize early objective control (dragons) and cry to the CS gods for economy—these correlate strongly with win probability.</li>
+        <li><strong>Vision:</strong> wards at 10 minutes are weak predictors alone; combine with later metrics for full picture.</li>
+      </ol>
+
+      <h3>Reporting suggestions</h3>
+      <p class="small">When you present results, show:</p>
+      <ul class="small">
+        <li>Top 10 features table (coef, odds ratio, p-value, RF importance, SHAP mean |value|).</li>
+        <li>Visuals: SHAP summary, logistic coefficient bar chart, RF importance bar chart.</li>
+        <li>Practical scaling: convert small-coefficient features into sensible units (e.g., per 1000 gold).</li>
+      </ul>
+    </section>
+
+    <section id="limits" class="card">
+      <h2>9) Limitations & Next Steps</h2>
+      <ul>
+        <li>10-minute snapshot: does not model momentum or comeback dynamics.</li>
+        <li>No champion or role normalization: some champions naturally have higher gold/CS at 10:00.</li>
+        <li>Patch/meta differences: results may change across patches or regions.</li>
+      </ul>
+      <h3>Next steps</h3>
+      <ul>
+        <li>Expand to minute-by-minute series and use time-series models.</li>
+        <li>Role/champion features; normalize by expected values for role.</li>
+        <li>Calibrate predicted probabilities and add decision thresholds for actionable alerts (e.g., surrender recommendation when win probability < 10%).</li>
+      </ul>
+    </section>
+
+    <section id="appendix" class="card">
+      <h2>10) Appendix — Code Snippets & Repro Steps</h2>
+      <h3>Engineering diffs</h3>
+      <pre><code># Create diff features (Python/pandas)
+blue_cols = [c for c in df.columns if c.startswith('blue')]
+for b in blue_cols:
+    r = 'red' + b[4:]
+    if r in df.columns:
+        df['diff' + b[4:]] = df[b] - df[r]</code></pre>
+
+      <h3>Logistic regression: fit + interpret</h3>
+      <pre><code># scale & fit
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+scaler = StandardScaler()
+Xs = scaler.fit_transform(X)
+clf = LogisticRegression(max_iter=300).fit(Xs, y)
+
+# odds ratio
+import numpy as np
+odds = np.exp(clf.coef_[0])
+pct = (odds - 1) * 100</code></pre>
+
+      <h3>SHAP (for RandomForest)</h3>
+      <pre><code>import shap
+explainer = shap.TreeExplainer(rf)
+shap_values = explainer.shap_values(X_test)
+shap.summary_plot(shap_values[1], X_test)</code></pre>
+    </section>
+
+    <footer class="foot">
+      <p>Want me to inject your actual metrics and plots into this HTML? Paste the numbers (AUC, top 5 features & values) and any image files (SHAP plot, coefficient bar chart) and I’ll embed them into the report for you.</p>
+      <p class="muted">Generated with help from your analysis — replace placeholders with your exact outputs before submitting.</p>
+    </footer>
+  </div>
+</body>
+</html>
+
